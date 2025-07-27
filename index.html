@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XYZ空間 線分PQ通過領域シミュレーション</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 100;
+            max-width: 280px;
+            transition: transform 0.3s ease;
+        }
+        
+        #menuToggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 136, 0.9);
+            color: #000;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            z-index: 101;
+            display: none;
+        }
+        
+        #mobileControls {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+        
+        .mobile-slider-group {
+            margin-bottom: 10px;
+        }
+        
+        .mobile-slider-group label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #00ff88;
+        }
+        
+        .mobile-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .mobile-buttons button {
+            flex: 1;
+            padding: 8px;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            #controls {
+                display: none;
+            }
+            
+            #mobileControls {
+                display: block;
+            }
+            
+            #menuToggle {
+                display: block;
+            }
+            
+            input[type="range"] {
+                width: 100%;
+                height: 8px;
+            }
+            
+            input[type="range"]::-webkit-slider-thumb {
+                width: 20px;
+                height: 20px;
+            }
+            
+            .info-toggle {
+                background: rgba(0, 255, 136, 0.2);
+                border: 1px solid #00ff88;
+                color: #00ff88;
+                padding: 5px 10px;
+                border-radius: 5px;
+                font-size: 12px;
+                margin-top: 10px;
+            }
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #00ff88;
+        }
+        input[type="range"] {
+            width: 200px;
+            height: 6px;
+            background: #333;
+            outline: none;
+            border-radius: 3px;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00ff88;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        button {
+            background: #00ff88;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #00cc66;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 255, 136, 0.3);
+        }
+        .info {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <button id="menuToggle">メニュー</button>
+        <div id="controls">
+            <h3>線分PQ通過領域シミュレーション</h3>
+            <div class="control-group">
+                <label for="pSlider">点P位置 (x軸上): <span id="pValue">0.5</span></label>
+                <input type="range" id="pSlider" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="control-group">
+                <label for="qAngle">点Q角度 (yz平面): <span id="qAngleValue">0</span>°</label>
+                <input type="range" id="qAngle" min="0" max="360" step="1" value="0">
+            </div>
+            <div class="control-group">
+                <button id="animateBtn">アニメーション開始</button>
+                <button id="resetBtn">リセット</button>
+            </div>
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="showSurface"> 通過領域を表示
+                </label>
+                <label>
+                    <input type="checkbox" id="showTrail" checked> 軌跡を表示
+                </label>
+                <label>
+                    <input type="checkbox" id="autoRotate"> カメラ自動回転
+                </label>
+            </div>
+            <div class="info">
+                <p>条件:</p>
+                <p>• P: x軸上 (0, 0, 0) → (1, 0, 0)</p>
+                <p>• Q: yz平面上 (x=0)</p>
+                <p>• |OP| + |OQ| = 1</p>
+                <p style="margin-top: 10px; color: #888; font-size: 11px;">
+                    マウス: ドラッグで回転、ホイールで拡大/縮小<br>
+                    タッチ: 1本指で回転、2本指でピンチ拡大/縮小
+                </p>
+            </div>
+        </div>
+        
+        <!-- モバイル用コントロール -->
+        <div id="mobileControls">
+            <div class="mobile-slider-group">
+                <label>
+                    <span>点P (x軸)</span>
+                    <span id="pValueMobile">0.5</span>
+                </label>
+                <input type="range" id="pSliderMobile" min="0" max="1" step="0.01" value="0.5">
+            </div>
+            <div class="mobile-slider-group">
+                <label>
+                    <span>点Q角度</span>
+                    <span id="qAngleValueMobile">0°</span>
+                </label>
+                <input type="range" id="qAngleMobile" min="0" max="360" step="1" value="0">
+            </div>
+            <div class="mobile-buttons">
+                <button id="animateBtnMobile">アニメーション</button>
+                <button id="optionsBtn">オプション</button>
+            </div>
+        </div>
+        
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // シーンの初期化
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        scene.fog = new THREE.Fog(0x1a1a1a, 10, 50);
+
+        // カメラの設定
+        const camera = new THREE.PerspectiveCamera(
+            75, window.innerWidth / window.innerHeight, 0.1, 1000
+        );
+        camera.position.set(3, 2, 3);
+        camera.lookAt(0, 0, 0);
+
+        // レンダラーの設定
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: document.getElementById('canvas'),
+            antialias: true 
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // ライトの設定
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // マウス・タッチコントロール
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let cameraDistance = 3;
+        let cameraAngleX = 0;
+        let cameraAngleY = Math.PI / 6;
+        
+        // タッチ操作用
+        let touches = [];
+        let pinchDistance = 0;
+
+        // カメラ位置を更新する関数
+        function updateCameraPosition() {
+            camera.position.x = cameraDistance * Math.sin(cameraAngleX) * Math.cos(cameraAngleY);
+            camera.position.y = cameraDistance * Math.sin(cameraAngleY);
+            camera.position.z = cameraDistance * Math.cos(cameraAngleX) * Math.cos(cameraAngleY);
+            camera.lookAt(0, 0, 0);
+        }
+
+        // マウスイベント
+        document.addEventListener('mousedown', (e) => {
+            if (e.target.tagName !== 'CANVAS') return;
+            isDragging = true;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - previousMousePosition.x;
+            const deltaY = e.clientY - previousMousePosition.y;
+            
+            cameraAngleX += deltaX * 0.01;
+            cameraAngleY = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, cameraAngleY - deltaY * 0.01));
+            
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+            
+            if (!document.getElementById('autoRotate').checked) {
+                updateCameraPosition();
+            }
+        });
+
+        // マウスホイールイベント
+        document.addEventListener('wheel', (e) => {
+            if (e.target.tagName !== 'CANVAS') return;
+            e.preventDefault();
+            cameraDistance = Math.max(1, Math.min(10, cameraDistance + e.deltaY * 0.01));
+            
+            if (!document.getElementById('autoRotate').checked) {
+                updateCameraPosition();
+            }
+        });
+
+        // タッチイベント
+        const canvas = document.getElementById('canvas');
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touches = Array.from(e.touches);
+            
+            if (touches.length === 1) {
+                isDragging = true;
+                previousMousePosition = { x: touches[0].clientX, y: touches[0].clientY };
+            } else if (touches.length === 2) {
+                isDragging = false;
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                pinchDistance = Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            touches = Array.from(e.touches);
+            
+            if (touches.length === 1 && isDragging) {
+                const deltaX = touches[0].clientX - previousMousePosition.x;
+                const deltaY = touches[0].clientY - previousMousePosition.y;
+                
+                cameraAngleX += deltaX * 0.01;
+                cameraAngleY = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, cameraAngleY - deltaY * 0.01));
+                
+                previousMousePosition = { x: touches[0].clientX, y: touches[0].clientY };
+                
+                if (!document.getElementById('autoRotate').checked) {
+                    updateCameraPosition();
+                }
+            } else if (touches.length === 2) {
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                const newPinchDistance = Math.sqrt(dx * dx + dy * dy);
+                const pinchDelta = newPinchDistance - pinchDistance;
+                
+                cameraDistance = Math.max(1, Math.min(10, cameraDistance - pinchDelta * 0.01));
+                pinchDistance = newPinchDistance;
+                
+                if (!document.getElementById('autoRotate').checked) {
+                    updateCameraPosition();
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touches = Array.from(e.touches);
+            isDragging = false;
+        });
+
+        // 座標軸の作成
+        const axesGroup = new THREE.Group();
+        
+        // X軸 (赤)
+        const xAxisGeometry = new THREE.CylinderGeometry(0.01, 0.01, 1.5, 8);
+        const xAxisMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const xAxis = new THREE.Mesh(xAxisGeometry, xAxisMaterial);
+        xAxis.rotation.z = -Math.PI / 2;
+        xAxis.position.x = 0.75;
+        axesGroup.add(xAxis);
+
+        // Y軸 (緑)
+        const yAxisGeometry = new THREE.CylinderGeometry(0.01, 0.01, 1.5, 8);
+        const yAxisMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const yAxis = new THREE.Mesh(yAxisGeometry, yAxisMaterial);
+        yAxis.position.y = 0.75;
+        axesGroup.add(yAxis);
+
+        // Z軸 (青)
+        const zAxisGeometry = new THREE.CylinderGeometry(0.01, 0.01, 1.5, 8);
+        const zAxisMaterial = new THREE.MeshBasicMaterial({ color: 0x0088ff });
+        const zAxis = new THREE.Mesh(zAxisGeometry, zAxisMaterial);
+        zAxis.rotation.x = Math.PI / 2;
+        zAxis.position.z = 0.75;
+        axesGroup.add(zAxis);
+
+        scene.add(axesGroup);
+
+        // yz平面の作成
+        const planeGeometry = new THREE.PlaneGeometry(2, 2);
+        const planeMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x0088ff, 
+            side: THREE.DoubleSide, 
+            transparent: true, 
+            opacity: 0.1 
+        });
+        const yzPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+        yzPlane.rotation.y = Math.PI / 2;
+        scene.add(yzPlane);
+
+        // 点Pの作成
+        const pGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+        const pMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xff0000,
+            emissive: 0xff0000,
+            emissiveIntensity: 0.5
+        });
+        const pointP = new THREE.Mesh(pGeometry, pMaterial);
+        scene.add(pointP);
+
+        // 点Qの作成
+        const qGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+        const qMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x00ff00,
+            emissive: 0x00ff00,
+            emissiveIntensity: 0.5
+        });
+        const pointQ = new THREE.Mesh(qGeometry, qMaterial);
+        scene.add(pointQ);
+
+        // 原点Oの作成
+        const oGeometry = new THREE.SphereGeometry(0.03, 16, 16);
+        const oMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
+        const pointO = new THREE.Mesh(oGeometry, oMaterial);
+        scene.add(pointO);
+
+        // 線分PQの作成
+        const lineGeometry = new THREE.BufferGeometry();
+        const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x00ffff,
+            linewidth: 2
+        });
+        const linePQ = new THREE.Line(lineGeometry, lineMaterial);
+        scene.add(linePQ);
+
+        // 通過領域の頂点を格納する配列
+        const surfaceVertices = [];
+        const trailLines = [];
+
+        // 通過領域の面を作成
+        const surfaceGeometry = new THREE.BufferGeometry();
+        const surfaceMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x00ff88,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide,
+            emissive: 0x00ff88,
+            emissiveIntensity: 0.1,
+            wireframe: false
+        });
+        const surface = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
+        scene.add(surface);
+
+        // 点の位置を更新する関数
+        function updatePoints(pParam, qAngle) {
+            // 点Pの位置 (x軸上)
+            const pX = pParam;
+            pointP.position.set(pX, 0, 0);
+
+            // 点Qの位置 (yz平面上)
+            const qRadius = 1 - pParam; // |OP| + |OQ| = 1
+            const qY = qRadius * Math.cos(qAngle);
+            const qZ = qRadius * Math.sin(qAngle);
+            pointQ.position.set(0, qY, qZ);
+
+            // 線分PQを更新
+            const positions = new Float32Array([
+                pX, 0, 0,
+                0, qY, qZ
+            ]);
+            lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            // 軌跡を追加
+            if (document.getElementById('showTrail').checked) {
+                const trailGeometry = new THREE.BufferGeometry();
+                trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3));
+                const trailMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const trail = new THREE.Line(trailGeometry, trailMaterial);
+                trailLines.push(trail);
+                scene.add(trail);
+
+                // 古い軌跡を削除
+                if (trailLines.length > 1200) {
+                    const oldTrail = trailLines.shift();
+                    scene.remove(oldTrail);
+                    oldTrail.geometry.dispose();
+                    oldTrail.material.dispose();
+                }
+            }
+
+            return { p: [pX, 0, 0], q: [0, qY, qZ] };
+        }
+
+        // 通過領域を生成する関数
+        function generateSurface() {
+            const vertices = [];
+            const indices = [];
+            
+            const pSteps = 50;  // 増加
+            const qSteps = 100; // 増加
+            
+            // 頂点を生成
+            for (let i = 0; i <= pSteps; i++) {
+                const pParam = i / pSteps;
+                const pX = pParam;
+                const qRadius = 1 - pParam;
+                
+                for (let j = 0; j <= qSteps; j++) {
+                    const qAngle = (j / qSteps) * Math.PI * 2;
+                    const qY = qRadius * Math.cos(qAngle);
+                    const qZ = qRadius * Math.sin(qAngle);
+                    
+                    // 線分PQ上の複数の点を追加（境界をより正確に表現）
+                    // t=0（点P）とt=1（点Q）の点を重点的に追加
+                    const tValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+                    
+                    for (const t of tValues) {
+                        const x = pX * (1 - t);
+                        const y = qY * t;
+                        const z = qZ * t;
+                        vertices.push(x, y, z);
+                    }
+                }
+            }
+            
+            // 三角形メッシュのインデックスを生成
+            for (let i = 0; i < pSteps; i++) {
+                for (let j = 0; j < qSteps; j++) {
+                    const rowSize = (qSteps + 1) * 11; // 11 points per line segment
+                    const base = i * rowSize + j * 11;
+                    const nextRow = (i + 1) * rowSize + j * 11;
+                    const nextCol = i * rowSize + ((j + 1) % (qSteps + 1)) * 11;
+                    const nextRowNextCol = (i + 1) * rowSize + ((j + 1) % (qSteps + 1)) * 11;
+                    
+                    // 各t値に対して三角形を生成
+                    for (let t = 0; t < 10; t++) {
+                        // 第1の三角形
+                        indices.push(base + t, nextRow + t, nextCol + t);
+                        // 第2の三角形
+                        indices.push(nextCol + t, nextRow + t, nextRowNextCol + t);
+                    }
+                }
+            }
+            
+            // BufferGeometryに設定
+            surfaceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            surfaceGeometry.setIndex(indices);
+            surfaceGeometry.computeVertexNormals();
+        }
+
+        // 境界線（エッジ）を表示するための追加メッシュ
+        const edgeGeometry = new THREE.BufferGeometry();
+        const edgeMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x00ffff,
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.8
+        });
+        const edgeLines = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+        scene.add(edgeLines);
+
+        // 境界線を生成する関数
+        function generateEdges() {
+            const edgeVertices = [];
+            
+            // P軸に沿った境界線（t=0とt=1）
+            for (let i = 0; i <= 50; i++) {
+                const pParam = i / 50;
+                const pX = pParam;
+                const qRadius = 1 - pParam;
+                
+                for (let j = 0; j <= 100; j++) {
+                    const qAngle = (j / 100) * Math.PI * 2;
+                    const qY = qRadius * Math.cos(qAngle);
+                    const qZ = qRadius * Math.sin(qAngle);
+                    
+                    // t=0の点（点P側の境界）
+                    edgeVertices.push(pX, 0, 0);
+                    // t=1の点（点Q側の境界）
+                    edgeVertices.push(0, qY, qZ);
+                }
+            }
+            
+            edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgeVertices, 3));
+        }
+
+        // アニメーション用の変数
+        let animating = false;
+        let animationTime = 0;
+
+        // UIコントロール
+        const pSlider = document.getElementById('pSlider');
+        const qAngleSlider = document.getElementById('qAngle');
+        const animateBtn = document.getElementById('animateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const menuToggle = document.getElementById('menuToggle');
+        const controls = document.getElementById('controls');
+
+        // モバイル用コントロール
+        const pSliderMobile = document.getElementById('pSliderMobile');
+        const qAngleMobile = document.getElementById('qAngleMobile');
+        const animateBtnMobile = document.getElementById('animateBtnMobile');
+        const optionsBtn = document.getElementById('optionsBtn');
+
+        // メニュートグル（詳細オプション表示用）
+        menuToggle.addEventListener('click', () => {
+            controls.style.display = controls.style.display === 'block' ? 'none' : 'block';
+            menuToggle.textContent = controls.style.display === 'block' ? '閉じる' : 'メニュー';
+        });
+
+        optionsBtn.addEventListener('click', () => {
+            controls.style.display = controls.style.display === 'block' ? 'none' : 'block';
+            menuToggle.textContent = controls.style.display === 'block' ? '閉じる' : 'メニュー';
+        });
+
+        // スライダーの同期
+        function syncSliders() {
+            pSlider.value = pSliderMobile.value;
+            qAngleSlider.value = qAngleMobile.value;
+            document.getElementById('pValue').textContent = pSliderMobile.value;
+            document.getElementById('qAngleValue').textContent = qAngleMobile.value;
+            document.getElementById('pValueMobile').textContent = pSliderMobile.value;
+            document.getElementById('qAngleValueMobile').textContent = qAngleMobile.value + '°';
+        }
+
+        // モバイルスライダーイベント
+        pSliderMobile.addEventListener('input', (e) => {
+            pSlider.value = e.target.value;
+            document.getElementById('pValue').textContent = e.target.value;
+            document.getElementById('pValueMobile').textContent = e.target.value;
+            if (!animating) {
+                updatePoints(parseFloat(e.target.value), (qAngleMobile.value * Math.PI) / 180);
+            }
+        });
+
+        qAngleMobile.addEventListener('input', (e) => {
+            qAngleSlider.value = e.target.value;
+            document.getElementById('qAngleValue').textContent = e.target.value;
+            document.getElementById('qAngleValueMobile').textContent = e.target.value + '°';
+            if (!animating) {
+                updatePoints(parseFloat(pSliderMobile.value), (e.target.value * Math.PI) / 180);
+            }
+        });
+
+        animateBtnMobile.addEventListener('click', () => {
+            animating = !animating;
+            animateBtnMobile.textContent = animating ? 'アニメ停止' : 'アニメーション';
+            animateBtn.textContent = animating ? 'アニメーション停止' : 'アニメーション開始';
+        });
+
+        pSlider.addEventListener('input', (e) => {
+            document.getElementById('pValue').textContent = e.target.value;
+            if (!animating) {
+                updatePoints(parseFloat(e.target.value), (qAngleSlider.value * Math.PI) / 180);
+            }
+        });
+
+        qAngleSlider.addEventListener('input', (e) => {
+            document.getElementById('qAngleValue').textContent = e.target.value;
+            if (!animating) {
+                updatePoints(parseFloat(pSlider.value), (e.target.value * Math.PI) / 180);
+            }
+        });
+
+        animateBtn.addEventListener('click', () => {
+            animating = !animating;
+            animateBtn.textContent = animating ? 'アニメーション停止' : 'アニメーション開始';
+        });
+
+        resetBtn.addEventListener('click', () => {
+            animating = false;
+            animationTime = 0;
+            pSlider.value = 0.5;
+            qAngleSlider.value = 0;
+            document.getElementById('pValue').textContent = '0.5';
+            document.getElementById('qAngleValue').textContent = '0';
+            animateBtn.textContent = 'アニメーション開始';
+            
+            // 軌跡をクリア
+            trailLines.forEach(trail => {
+                scene.remove(trail);
+                trail.geometry.dispose();
+                trail.material.dispose();
+            });
+            trailLines.length = 0;
+            
+            updatePoints(0.5, 0);
+        });
+
+        document.getElementById('showSurface').addEventListener('change', (e) => {
+            surface.visible = e.target.checked;
+            edgeLines.visible = e.target.checked;
+        });
+
+        // 初期化
+        updatePoints(0.5, 0);
+        generateSurface();
+        generateEdges();
+        updateCameraPosition();
+        
+        // 初期状態で通過領域を非表示
+        surface.visible = false;
+        edgeLines.visible = false;
+
+        // アニメーションループ
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // カメラの回転
+            const autoRotate = document.getElementById('autoRotate').checked;
+            
+            if (autoRotate) {
+                const time = Date.now() * 0.001;
+                camera.position.x = cameraDistance * Math.cos(time * 0.3);
+                camera.position.z = cameraDistance * Math.sin(time * 0.3);
+                camera.position.y = cameraDistance * 0.7 + Math.sin(time * 0.5) * 0.5;
+                camera.lookAt(0, 0, 0);
+            }
+
+            // アニメーション
+            if (animating) {
+                animationTime += 0.02;
+                
+                const pParam = (Math.sin(animationTime) + 1) / 2;
+                const qAngle = animationTime * 2;
+                
+                pSlider.value = pParam;
+                qAngleSlider.value = ((qAngle * 180 / Math.PI) % 360);
+                pSliderMobile.value = pParam;
+                qAngleMobile.value = ((qAngle * 180 / Math.PI) % 360);
+                
+                document.getElementById('pValue').textContent = pParam.toFixed(2);
+                document.getElementById('qAngleValue').textContent = Math.floor((qAngle * 180 / Math.PI) % 360);
+                document.getElementById('pValueMobile').textContent = pParam.toFixed(2);
+                document.getElementById('qAngleValueMobile').textContent = Math.floor((qAngle * 180 / Math.PI) % 360) + '°';
+                
+                updatePoints(pParam, qAngle);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // ウィンドウリサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
